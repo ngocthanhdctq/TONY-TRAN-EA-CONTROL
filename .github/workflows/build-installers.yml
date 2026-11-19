@@ -30,11 +30,15 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
         with:
-          packages: |-
-            platform-tools
-            platforms;android-35
-            build-tools;35.0.0
+          # Let the action install its default platform-tools package.
+          # Install versioned packages separately so semicolons are passed
+          # literally to sdkmanager and are not parsed as shell separators.
           accept-android-sdk-licenses: true
+
+      - name: Install Android platform and build tools
+        shell: bash
+        run: |
+          sdkmanager --install "platforms;android-35" "build-tools;35.0.0"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
