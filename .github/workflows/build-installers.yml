@@ -27,15 +27,14 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # v4 no longer requests Google's removed SDK "tools" package.
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
         with:
-          packages: 'platform-tools'
-          accept-android-sdk-licenses: 'yes'
-
-      - name: Install required Android SDK packages
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          packages: |-
+            platform-tools
+            platforms;android-35
+            build-tools;35.0.0
+          accept-android-sdk-licenses: true
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -46,6 +45,7 @@ jobs:
         shell: bash
         run: |
           test -f android/settings.gradle.kts
+          test -f android/build.gradle.kts
           test -f android/app/build.gradle.kts
 
       - name: Build debug APK
@@ -78,7 +78,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
 
       - name: Install PyInstaller
         run: python -m pip install --upgrade pip pyinstaller
@@ -114,7 +113,7 @@ jobs:
           '@ | Set-Content "$package/README_BRIDGE.txt" -Encoding UTF8
           Compress-Archive -Path "$package/*" -DestinationPath "windows-bridge/TONY_TRAN_EA_CONTROL_Windows.zip" -Force
 
-      - name: Publish Windows installer artifact
+      - name: Publish Windows package artifact
         uses: actions/upload-artifact@v4
         with:
           name: TONY_TRAN_EA_CONTROL-Windows-EXE
