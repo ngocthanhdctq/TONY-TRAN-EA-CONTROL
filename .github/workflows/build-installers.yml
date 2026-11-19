@@ -1,4 +1,3 @@
-
 name: Build TONY TRAN EA CONTROL installers
 
 on:
@@ -10,61 +9,98 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: tony-tran-ea-control-build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   android-apk:
     name: Build Android APK
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+
+      # v4 no longer requests Google's removed SDK "tools" package.
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-      - name: Install Android platform and build tools
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools'
+          accept-android-sdk-licenses: 'yes'
+
+      - name: Install required Android SDK packages
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+
+      - name: Verify Android project files
+        shell: bash
+        run: |
+          test -f android/settings.gradle.kts
+          test -f android/app/build.gradle.kts
+
       - name: Build debug APK
         working-directory: android
-        run: gradle --no-daemon :app:assembleDebug
+        run: gradle --no-daemon --stacktrace :app:assembleDebug
+
       - name: Publish APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: TONY_TRAN_EA_CONTROL-Android-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+          retention-days: 14
 
   windows-exe:
     name: Build Windows Bridge EXE
     runs-on: windows-latest
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Verify repository layout
+        shell: pwsh
+        run: |
+          if (!(Test-Path "windows-bridge/bridge.py")) { throw "Missing windows-bridge/bridge.py at repository root." }
+          if (!(Test-Path "windows-bridge/test_bridge.py")) { throw "Missing windows-bridge/test_bridge.py at repository root." }
+          if (!(Test-Path "windows-bridge/start_bridge.bat")) { throw "Missing windows-bridge/start_bridge.bat at repository root." }
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: 'pip'
+
       - name: Install PyInstaller
-        run: python -m pip install --upgrade pyinstaller
+        run: python -m pip install --upgrade pip pyinstaller
+
       - name: Run Bridge API smoke tests
-        working-directory: windows-bridge
-        run: python test_bridge.py
-      - name: Build EXE
-        working-directory: windows-bridge
-        run: pyinstaller --clean --onefile --name TonyTranBridge bridge.py
-      - name: Assemble Windows installer folder
+        run: python windows-bridge/test_bridge.py
+
+      - name: Build Windows EXE
+        run: >-
+          python -m PyInstaller --clean --noconfirm --onefile
+          --name TonyTranBridge
+          --distpath windows-bridge/dist
+          --workpath windows-bridge/build
+          windows-bridge/bridge.py
+
+      - name: Assemble Windows package
         shell: pwsh
-        working-directory: windows-bridge
         run: |
-          New-Item -ItemType Directory -Force -Path package | Out-Null
-          Copy-Item dist/TonyTranBridge.exe package/
-          Copy-Item start_bridge.bat package/
+          $package = "windows-bridge/package"
+          New-Item -ItemType Directory -Force -Path $package | Out-Null
+          Copy-Item "windows-bridge/dist/TonyTranBridge.exe" "$package/TonyTranBridge.exe" -Force
+          Copy-Item "windows-bridge/start_bridge.bat" "$package/start_bridge.bat" -Force
           @'
           TONY TRAN EA CONTROL - WINDOWS BRIDGE
 
@@ -74,12 +110,14 @@ jobs:
           4. Use a trusted LAN or Tailscale network only. Never expose port 8765 to the public Internet.
           5. Keep this PC, MT5, EA and Bridge running for remote control.
 
-          This package is an unsigned self-built executable. Windows SmartScreen may show a warning.
-          '@ | Set-Content package/README_BRIDGE.txt
-          Compress-Archive -Path package/* -DestinationPath TONY_TRAN_EA_CONTROL_Windows.zip -Force
+          This package contains an unsigned self-built executable. Windows SmartScreen may show a warning.
+          '@ | Set-Content "$package/README_BRIDGE.txt" -Encoding UTF8
+          Compress-Archive -Path "$package/*" -DestinationPath "windows-bridge/TONY_TRAN_EA_CONTROL_Windows.zip" -Force
+
       - name: Publish Windows installer artifact
         uses: actions/upload-artifact@v4
         with:
           name: TONY_TRAN_EA_CONTROL-Windows-EXE
           path: windows-bridge/TONY_TRAN_EA_CONTROL_Windows.zip
           if-no-files-found: error
+          retention-days: 14
