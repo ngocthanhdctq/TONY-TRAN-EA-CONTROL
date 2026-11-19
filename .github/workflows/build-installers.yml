@@ -1,0 +1,85 @@
+
+name: Build TONY TRAN EA CONTROL installers
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  android-apk:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install Android platform and build tools
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Build debug APK
+        working-directory: android
+        run: gradle --no-daemon :app:assembleDebug
+      - name: Publish APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TONY_TRAN_EA_CONTROL-Android-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+  windows-exe:
+    name: Build Windows Bridge EXE
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install PyInstaller
+        run: python -m pip install --upgrade pyinstaller
+      - name: Run Bridge API smoke tests
+        working-directory: windows-bridge
+        run: python test_bridge.py
+      - name: Build EXE
+        working-directory: windows-bridge
+        run: pyinstaller --clean --onefile --name TonyTranBridge bridge.py
+      - name: Assemble Windows installer folder
+        shell: pwsh
+        working-directory: windows-bridge
+        run: |
+          New-Item -ItemType Directory -Force -Path package | Out-Null
+          Copy-Item dist/TonyTranBridge.exe package/
+          Copy-Item start_bridge.bat package/
+          @'
+          TONY TRAN EA CONTROL - WINDOWS BRIDGE
+
+          1. Run start_bridge.bat and enter a private random token (at least 32 characters).
+          2. Keep this token private and enter the same token in the Android app and MT5 EA inputs.
+          3. Allow http://127.0.0.1:8765 in MT5 Tools > Options > Expert Advisors > WebRequest.
+          4. Use a trusted LAN or Tailscale network only. Never expose port 8765 to the public Internet.
+          5. Keep this PC, MT5, EA and Bridge running for remote control.
+
+          This package is an unsigned self-built executable. Windows SmartScreen may show a warning.
+          '@ | Set-Content package/README_BRIDGE.txt
+          Compress-Archive -Path package/* -DestinationPath TONY_TRAN_EA_CONTROL_Windows.zip -Force
+      - name: Publish Windows installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TONY_TRAN_EA_CONTROL-Windows-EXE
+          path: windows-bridge/TONY_TRAN_EA_CONTROL_Windows.zip
+          if-no-files-found: error
